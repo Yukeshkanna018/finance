@@ -29,6 +29,11 @@ async function getAuthenticatedUser(c: any, db: EdgeDatabase) {
 // Middleware to inject DB instance and enforce Authentication
 app.use("/api/*", async (c, next) => {
   const path = c.req.path;
+  if (path === "/api/debug-env") {
+    await next();
+    return;
+  }
+
   const isAuthRoute = path === "/api/auth/register" || path === "/api/auth/login";
 
   const supabaseUrl = c.env.SUPABASE_URL;
@@ -51,6 +56,15 @@ app.use("/api/*", async (c, next) => {
   }
   c.set("user", user);
   await next();
+});
+
+app.get("/api/debug-env", (c) => {
+  return c.json({
+    keys: Object.keys(c.env || {}),
+    envType: typeof c.env,
+    hasUrl: !!c.env?.SUPABASE_URL,
+    hasKey: !!(c.env?.SUPABASE_SERVICE_ROLE_KEY || c.env?.SUPABASE_ANON_KEY)
+  });
 });
 
 /* =========================================================================
