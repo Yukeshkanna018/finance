@@ -1,0 +1,4 @@
+name = "finance-loan-ledger"
+pages_build_output_dir = "dist"
+compatibility_date = "2025-06-01"
+compatibility_flags = ["nodejs_compat"]
