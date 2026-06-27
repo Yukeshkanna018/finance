@@ -5,5 +5,5 @@ compatibility_flags = ["nodejs_compat"]
 
 [vars]
 SUPABASE_URL = "https://bjzoyixxgrnobrnwqmfs.supabase.co"
-SUPABASE_SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-SUPABASE_ANON_KEY = "your-anon-key"
+SUPABASE_SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJqem95aXh4Z3Jub2JybndxbWZzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MTc4NTgxMSwiZXhwIjoyMDk3MzYxODExfQ.U8850Sn7HMx_3an8mfTVenjadXLwhy2tS2YtUoo2pHU"
+SUPABASE_ANON_KEY = ""
