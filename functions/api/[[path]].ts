@@ -18,6 +18,10 @@ type Variables = {
 // and basePath makes routes match without the prefix (e.g. /auth/login).
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>().basePath("/api");
 
+app.onError((err, c) => {
+  return c.json({ error: err.message || "Internal Server Error" }, 500);
+});
+
 // Helper to authenticate user using Bearer token (email)
 async function getAuthenticatedUser(c: any, db: EdgeDatabase) {
   const authHeader = c.req.header("authorization");
