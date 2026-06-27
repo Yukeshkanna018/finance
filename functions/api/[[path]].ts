@@ -13,9 +13,10 @@ type Variables = {
   user: any;
 };
 
-// Cloudflare Pages passes the full request URL to this function,
-// so Hono sees the full /api/* path.
-const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
+// Using basePath('/api') so Hono strips the /api prefix before matching.
+// Cloudflare Pages passes the full URL (e.g. /api/auth/login) to this handler,
+// and basePath makes routes match without the prefix (e.g. /auth/login).
+const app = new Hono<{ Bindings: Bindings; Variables: Variables }>().basePath("/api");
 
 // Helper to authenticate user using Bearer token (email)
 async function getAuthenticatedUser(c: any, db: EdgeDatabase) {
@@ -23,7 +24,7 @@ async function getAuthenticatedUser(c: any, db: EdgeDatabase) {
   if (!authHeader) return null;
   const token = authHeader.replace("Bearer ", "");
   if (!token) return null;
-  
+
   try {
     const users = await db.getUsers();
     const user = users.find((u) => u.email === token);
@@ -33,18 +34,17 @@ async function getAuthenticatedUser(c: any, db: EdgeDatabase) {
   }
 }
 
-// Middleware: inject DB and enforce authentication
-app.use("/api/*", async (c, next) => {
+// Middleware: inject DB and enforce authentication.
+// After basePath strips /api, paths here are e.g. /auth/login, /customers, etc.
+app.use("/*", async (c, next) => {
   const path = c.req.path;
 
-  // Skip auth check for debug endpoint
-  if (path === "/api/debug-env") {
+  if (path === "/debug-env") {
     await next();
     return;
   }
 
-  // Auth routes don't require a token — they ARE the login/register
-  const isAuthRoute = path === "/api/auth/register" || path === "/api/auth/login";
+  const isAuthRoute = path === "/auth/register" || path === "/auth/login";
 
   const supabaseUrl = c.env.SUPABASE_URL;
   const supabaseKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_ANON_KEY;
@@ -68,10 +68,9 @@ app.use("/api/*", async (c, next) => {
   await next();
 });
 
-app.get("/api/debug-env", (c) => {
+app.get("/debug-env", (c) => {
   return c.json({
     keys: Object.keys(c.env || {}),
-    envType: typeof c.env,
     hasUrl: !!c.env?.SUPABASE_URL,
     hasKey: !!(c.env?.SUPABASE_SERVICE_ROLE_KEY || c.env?.SUPABASE_ANON_KEY)
   });
@@ -81,7 +80,7 @@ app.get("/api/debug-env", (c) => {
    1. Authentication API Endpoints
    ========================================================================= */
 
-app.post("/api/auth/register", async (c) => {
+app.post("/auth/register", async (c) => {
   const db = c.get("db") as EdgeDatabase;
   const { email, password, fullName } = await c.req.json();
   if (!email || !password || !fullName) {
@@ -101,7 +100,7 @@ app.post("/api/auth/register", async (c) => {
     role: "staff",
     createdAt: new Date().toISOString()
   };
-  
+
   await db.addUser(newUser);
   await db.audit(newUser.email, "REGISTER_USER", "users", newUser.id, `Created a new account for ${fullName}`);
 
@@ -113,7 +112,7 @@ app.post("/api/auth/register", async (c) => {
   });
 });
 
-app.post("/api/auth/login", async (c) => {
+app.post("/auth/login", async (c) => {
   const db = c.get("db") as EdgeDatabase;
   const { email, password } = await c.req.json();
   if (!email || !password) {
@@ -135,7 +134,7 @@ app.post("/api/auth/login", async (c) => {
   });
 });
 
-app.put("/api/auth/profile", async (c) => {
+app.put("/auth/profile", async (c) => {
   const db = c.get("db") as EdgeDatabase;
   const user = c.get("user") as any;
   const { fullName } = await c.req.json();
@@ -152,7 +151,7 @@ app.put("/api/auth/profile", async (c) => {
   }
 });
 
-app.post("/api/auth/change-password", async (c) => {
+app.post("/auth/change-password", async (c) => {
   const db = c.get("db") as EdgeDatabase;
   const user = c.get("user") as any;
   const { oldPassword, newPassword } = await c.req.json();
@@ -174,7 +173,7 @@ app.post("/api/auth/change-password", async (c) => {
    2. Dashboard API Endpoints
    ========================================================================= */
 
-app.get("/api/dashboard/stats", async (c) => {
+app.get("/dashboard/stats", async (c) => {
   const db = c.get("db") as EdgeDatabase;
   await db.runOverdueChecks();
   const stats = await db.getDashboardStats();
@@ -185,12 +184,12 @@ app.get("/api/dashboard/stats", async (c) => {
    3. Customer Management API Endpoints
    ========================================================================= */
 
-app.get("/api/customers", async (c) => {
+app.get("/customers", async (c) => {
   const db = c.get("db") as EdgeDatabase;
   return c.json(await db.getCustomers());
 });
 
-app.post("/api/customers", async (c) => {
+app.post("/customers", async (c) => {
   const db = c.get("db") as EdgeDatabase;
   const user = c.get("user") as any;
   const { name, phone, address, notes } = await c.req.json();
@@ -203,7 +202,7 @@ app.post("/api/customers", async (c) => {
   return c.json(newCust);
 });
 
-app.put("/api/customers/:id", async (c) => {
+app.put("/customers/:id", async (c) => {
   const db = c.get("db") as EdgeDatabase;
   const user = c.get("user") as any;
   const id = c.req.param("id");
@@ -221,12 +220,12 @@ app.put("/api/customers/:id", async (c) => {
    4. Loan Management API Endpoints
    ========================================================================= */
 
-app.get("/api/loans", async (c) => {
+app.get("/loans", async (c) => {
   const db = c.get("db") as EdgeDatabase;
   return c.json(await db.getLoans());
 });
 
-app.post("/api/loans", async (c) => {
+app.post("/loans", async (c) => {
   const db = c.get("db") as EdgeDatabase;
   const user = c.get("user") as any;
   const { customerId, type, amount, interestRate, durationWeeks, weeklyPayment, monthlyInterest } = await c.req.json();
@@ -248,7 +247,7 @@ app.post("/api/loans", async (c) => {
   return c.json(newLoan);
 });
 
-app.post("/api/loans/:id/settle-principal", async (c) => {
+app.post("/loans/:id/settle-principal", async (c) => {
   const db = c.get("db") as EdgeDatabase;
   const user = c.get("user") as any;
   const id = c.req.param("id");
@@ -270,13 +269,13 @@ app.post("/api/loans/:id/settle-principal", async (c) => {
    5. Payment Tracking API Endpoints
    ========================================================================= */
 
-app.get("/api/payments", async (c) => {
+app.get("/payments", async (c) => {
   const db = c.get("db") as EdgeDatabase;
   const loans = await db.getLoans();
   return c.json(loans.flatMap(l => l.isDeleted ? [] : []));
 });
 
-app.get("/api/payments/history", async (c) => {
+app.get("/payments/history", async (c) => {
   const db = c.get("db") as EdgeDatabase;
   const allPayments = await db.backupDatabase();
   const parsed = JSON.parse(allPayments);
@@ -284,7 +283,7 @@ app.get("/api/payments/history", async (c) => {
   return c.json(activePayments);
 });
 
-app.post("/api/payments", async (c) => {
+app.post("/payments", async (c) => {
   const db = c.get("db") as EdgeDatabase;
   const user = c.get("user") as any;
   const { loanId, paymentDate, amount, paymentMethod, notes } = await c.req.json();
@@ -312,12 +311,12 @@ app.post("/api/payments", async (c) => {
    6. Savings Management API Endpoints
    ========================================================================= */
 
-app.get("/api/savings", async (c) => {
+app.get("/savings", async (c) => {
   const db = c.get("db") as EdgeDatabase;
   return c.json(await db.getSavings());
 });
 
-app.post("/api/savings", async (c) => {
+app.post("/savings", async (c) => {
   const db = c.get("db") as EdgeDatabase;
   const user = c.get("user") as any;
   const { date, amount, notes } = await c.req.json();
@@ -340,19 +339,19 @@ app.post("/api/savings", async (c) => {
    7. Notifications API Endpoints
    ========================================================================= */
 
-app.get("/api/notifications", async (c) => {
+app.get("/notifications", async (c) => {
   const db = c.get("db") as EdgeDatabase;
   return c.json(await db.getNotifications());
 });
 
-app.put("/api/notifications/:id/read", async (c) => {
+app.put("/notifications/:id/read", async (c) => {
   const db = c.get("db") as EdgeDatabase;
   const id = c.req.param("id");
   const success = await db.markNotificationRead(id);
   return c.json({ success });
 });
 
-app.post("/api/notifications/dismiss-all", async (c) => {
+app.post("/notifications/dismiss-all", async (c) => {
   const db = c.get("db") as EdgeDatabase;
   await db.dismissAllNotifications();
   return c.json({ success: true });
@@ -362,16 +361,16 @@ app.post("/api/notifications/dismiss-all", async (c) => {
    8. Trash and Soft Deletions API Endpoints
    ========================================================================= */
 
-app.get("/api/trash", async (c) => {
+app.get("/trash", async (c) => {
   const db = c.get("db") as EdgeDatabase;
   return c.json(await db.getTrashBin());
 });
 
-app.post("/api/trash/restore/:id", async (c) => {
+app.post("/trash/restore/:id", async (c) => {
   const db = c.get("db") as EdgeDatabase;
   const user = c.get("user") as any;
   const id = c.req.param("id");
-  
+
   const ok = await db.restoreRecord(id, user.email);
   if (ok) {
     return c.json({ success: true });
@@ -380,7 +379,7 @@ app.post("/api/trash/restore/:id", async (c) => {
   }
 });
 
-app.delete("/api/:table/:id", async (c) => {
+app.delete("/:table/:id", async (c) => {
   const db = c.get("db") as EdgeDatabase;
   const user = c.get("user") as any;
   const table = c.req.param("table");
@@ -388,7 +387,7 @@ app.delete("/api/:table/:id", async (c) => {
   const permanent = c.req.query("permanent");
 
   const isPermanent = permanent === "true";
-  
+
   const validTables = ["customers", "loans", "loanPayments", "savings"];
   if (!validTables.includes(table)) {
     return c.json({ error: "Invalid target operation table" }, 400);
@@ -402,7 +401,7 @@ app.delete("/api/:table/:id", async (c) => {
   }
 });
 
-app.post("/api/:table/bulk-delete", async (c) => {
+app.post("/:table/bulk-delete", async (c) => {
   const db = c.get("db") as EdgeDatabase;
   const user = c.get("user") as any;
   const table = c.req.param("table");
@@ -426,12 +425,12 @@ app.post("/api/:table/bulk-delete", async (c) => {
    9. Audit Logs & Database Backup/Restore API Endpoints
    ========================================================================= */
 
-app.get("/api/audit-logs", async (c) => {
+app.get("/audit-logs", async (c) => {
   const db = c.get("db") as EdgeDatabase;
   return c.json(await db.getAuditLogs());
 });
 
-app.get("/api/database/export", async (c) => {
+app.get("/database/export", async (c) => {
   const db = c.get("db") as EdgeDatabase;
   const backupData = await db.backupDatabase();
   return new Response(backupData, {
@@ -442,7 +441,7 @@ app.get("/api/database/export", async (c) => {
   });
 });
 
-app.post("/api/database/import", async (c) => {
+app.post("/database/import", async (c) => {
   const db = c.get("db") as EdgeDatabase;
   const user = c.get("user") as any;
   const { backupJson } = await c.req.json();
@@ -451,7 +450,10 @@ app.post("/api/database/import", async (c) => {
     return c.json({ error: "Missing backup JSON payload" }, 400);
   }
 
-  const result = await db.restoreDatabaseBackup(typeof backupJson === "string" ? backupJson : JSON.stringify(backupJson), user.email);
+  const result = await db.restoreDatabaseBackup(
+    typeof backupJson === "string" ? backupJson : JSON.stringify(backupJson),
+    user.email
+  );
   if (result.success) {
     return c.json({ success: true });
   } else {
