@@ -40,19 +40,27 @@ async function getAuthenticatedUser(c: any, db: EdgeDatabase) {
 
 // Middleware: inject DB and enforce authentication.
 // After basePath strips /api, paths here are e.g. /auth/login, /customers, etc.
+// Test endpoint before auth middleware
+app.get("/test-db", async (c) => {
+  try {
+    const supabaseUrl = c.env.SUPABASE_URL;
+    const supabaseKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_ANON_KEY;
+    const db = new EdgeDatabase(supabaseUrl, supabaseKey);
+    const users = await db.getUsers();
+    return c.json({ userCount: users.length, ok: true });
+  } catch (err: any) {
+    return c.json({ error: err.message, ok: false }, 500);
+  }
+});
+
 app.use("/*", async (c, next) => {
   const path = c.req.path;
 
+  // Allow debug env without auth
   if (path === "/debug-env" || path === "/api/debug-env") {
     await next();
     return;
   }
-
-  const isAuthRoute =
-    path === "/auth/register" ||
-    path === "/auth/login" ||
-    path === "/api/auth/register" ||
-    path === "/api/auth/login";
 
   const supabaseUrl = c.env.SUPABASE_URL;
   const supabaseKey = c.env.SUPABASE_SERVICE_ROLE_KEY || c.env.SUPABASE_ANON_KEY;
@@ -60,15 +68,18 @@ app.use("/*", async (c, next) => {
     return c.json({ error: "Missing Supabase configuration on Cloudflare Pages" }, 500);
   }
 
+  // Initialize DB for all routes (including test-db)
+  const db = new EdgeDatabase(supabaseUrl, supabaseKey);
+  c.set("db", db);
+
+  // Determine routes that bypass authentication (auth endpoints and test-db)
+  const isAuthRoute = path.startsWith("/auth/") || path === "/test-db";
+  if (isAuthRoute) {
+    await next();
+    return;
+  }
+
   try {
-    const db = new EdgeDatabase(supabaseUrl, supabaseKey);
-    c.set("db", db);
-
-    if (isAuthRoute) {
-      await next();
-      return;
-    }
-
     const user = await getAuthenticatedUser(c, db);
     if (!user) {
       return c.json({ error: "Unauthorized access: Please authenticate" }, 401);
@@ -226,12 +237,11 @@ app.post("/customers", async (c) => {
   const db = c.get("db") as EdgeDatabase;
   const user = c.get("user") as any;
   const { name, phone, address, notes } = await c.req.json();
-
-  if (!name || !phone) {
-    return c.json({ error: "Name and Phone number are required fields" }, 400);
+  if (!name) {
+    return c.json({ error: "Name is required" }, 400);
   }
 
-  const newCust = await db.addCustomer({ name, phone, address: address || "", notes: notes || "" }, user.email);
+  const newCust = await db.addCustomer({ name, phone: phone || "", address: address || "", notes: notes || "" }, user.email);
   return c.json(newCust);
 });
 
