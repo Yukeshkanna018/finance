@@ -58,7 +58,7 @@ app.get("/test-db", async (c) => {
 
 app.use("/*", async (c, next) => {
   const path = c.req.path;
-  const cleanPath = path.replace(/^\/api/, "");
+  const cleanPath = path.toLowerCase().replace(/^\/api/, "").replace(/\/+$/, "");
 
   // Allow debug env without auth
   if (cleanPath === "/debug-env") {
